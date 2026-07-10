@@ -1,1 +1,0 @@
-ALTER TABLE projects ADD COLUMN target_duration INTEGER DEFAULT 0;

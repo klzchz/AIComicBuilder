@@ -1,1 +1,0 @@
-ALTER TABLE dialogues ADD COLUMN end_ratio REAL DEFAULT 1.0;

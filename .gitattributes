@@ -1,0 +1,5 @@
+# Keep third-party agent platform exports (Bailian/Dify/Coze) out of language stats
+agents/** linguist-vendored
+# Data / assets
+messages/** linguist-data
+*.md linguist-documentation

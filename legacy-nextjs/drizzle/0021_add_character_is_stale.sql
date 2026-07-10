@@ -1,1 +1,0 @@
-ALTER TABLE characters ADD COLUMN is_stale INTEGER DEFAULT 0;

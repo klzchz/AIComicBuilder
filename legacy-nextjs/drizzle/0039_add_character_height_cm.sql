@@ -1,1 +1,0 @@
-ALTER TABLE characters ADD COLUMN height_cm INTEGER DEFAULT 0;

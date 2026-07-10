@@ -1,1 +1,0 @@
-ALTER TABLE shots ADD COLUMN sound_design TEXT DEFAULT '';

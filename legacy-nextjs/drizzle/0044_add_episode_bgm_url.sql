@@ -1,1 +1,0 @@
-ALTER TABLE episodes ADD COLUMN bgm_url TEXT DEFAULT '';

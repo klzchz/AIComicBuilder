@@ -1,1 +1,0 @@
-ALTER TABLE shots ADD COLUMN focal_point TEXT DEFAULT '';
