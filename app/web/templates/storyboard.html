@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Storyboard — {{ project.title }}{% endblock %}
+{% block content %}
+
+<!-- version tabs + view toggle -->
+<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+  <div class="flex flex-wrap items-center gap-1">
+    {% for v in versions %}
+    <a href="/project/{{ project.id }}/storyboard?versionId={{ v.id }}&view={{ view }}"
+       class="rounded-lg px-3 py-1.5 text-xs {{ 'bg-accent text-white' if v.id == active_version else 'border border-line text-slate-400 hover:bg-surface-2' }}">
+      {{ v.label or ('V' ~ v.version_num) }}</a>
+    {% endfor %}
+    <button id="btn-new-version" class="rounded-lg border border-dashed border-line px-3 py-1.5 text-xs text-slate-400 hover:bg-surface-2">
+      + New Version</button>
+  </div>
+
+  <div class="flex items-center gap-2">
+    <!-- generation mode -->
+    <div class="flex rounded-lg border border-line p-0.5 text-xs">
+      {% for m, label in [('keyframe','Keyframe Mode'), ('reference','Reference Image Mode')] %}
+      <button onclick="setMode('{{ m }}')"
+              class="rounded-md px-3 py-1 {{ 'bg-surface-3 text-slate-100' if mode == m else 'text-slate-500 hover:text-slate-300' }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+    <!-- view toggle -->
+    <div class="flex rounded-lg border border-line p-0.5 text-xs">
+      {% for vw, label in [('list','List'), ('kanban','Kanban')] %}
+      <a href="/project/{{ project.id }}/storyboard?versionId={{ active_version or '' }}&view={{ vw }}"
+         class="rounded-md px-3 py-1 {{ 'bg-surface-3 text-slate-100' if view == vw else 'text-slate-500 hover:text-slate-300' }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+    <a href="/api/projects/{{ project.id }}/download"
+       class="rounded-lg border border-line px-3 py-1.5 text-xs text-slate-300 hover:bg-surface-2">Download Assets</a>
+  </div>
+</div>
+
+<!-- batch operations panel (task_plan.md P0-B: always-expanded 4-row panel) -->
+<div class="mb-6 rounded-2xl border border-line-soft bg-surface-1 p-4">
+  <div class="grid grid-cols-1 gap-2 lg:grid-cols-5">
+    <button id="b1" onclick="batchAction(this, 'shot_split', 'text')"
+            class="rounded-lg border border-line px-3 py-2 text-xs text-slate-300 hover:bg-surface-2">
+      &#9312; Generate Shots from Script</button>
+    {% if mode == 'reference' %}
+    <button id="b2" onclick="batchRefImages(this)"
+            class="rounded-lg border border-line px-3 py-2 text-xs text-slate-300 hover:bg-surface-2">
+      &#9313; Batch Generate Ref Images</button>
+    {% else %}
+    <button id="b2" onclick="batchAction(this, 'batch_frame_generate', 'image')"
+            class="rounded-lg border border-line px-3 py-2 text-xs text-slate-300 hover:bg-surface-2">
+      &#9313; Batch Generate Frames</button>
+    {% endif %}
+    <button id="b3" onclick="batchAction(this, 'batch_video_prompt', 'text')"
+            class="rounded-lg border border-line px-3 py-2 text-xs text-slate-300 hover:bg-surface-2">
+      &#9314; Batch Generate Video Prompts</button>
+    <button id="b4" onclick="batchAction(this, '{{ 'batch_reference_video' if mode == 'reference' else 'batch_video_generate' }}', 'video')"
+            class="rounded-lg border border-line px-3 py-2 text-xs text-slate-300 hover:bg-surface-2">
+      &#9315; Batch Generate Videos</button>
+    <button onclick="autoRun(this)"
+            class="rounded-lg bg-accent px-3 py-2 text-xs font-medium text-white hover:bg-accent-soft">
+      &#9654; Auto-Run</button>
+  </div>
+  <div class="mt-3 flex items-center gap-4 text-[11px] text-slate-500">
+    <label class="flex items-center gap-1.5"><input type="checkbox" id="overwrite" class="accent-indigo-500"> Overwrite existing (regenerate all)</label>
+    <label class="flex items-center gap-1.5">Video Ratio
+      <select id="video-ratio" class="rounded border border-line bg-surface-2 px-1.5 py-0.5 text-[11px] text-slate-300">
+        <option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option>
+      </select>
+    </label>
+    <span id="batch-status"></span>
+  </div>
+</div>
+
+{% include "_shots.html" %}
+
+<!-- PORT NOTE: version-compare (src/components/editor/version-compare.tsx),
+     emotion curve, continuity check and shot drawer deep-edit are deferred.
+     The corresponding APIs exist (/api/projects/{id}/emotion-analysis,
+     /continuity-check). -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const PROJECT_ID = {{ project.id | tojson }};
+  const MODE = {{ mode | tojson }};
+
+  function ratio() { return document.getElementById("video-ratio").value; }
+  function overwrite() { return document.getElementById("overwrite").checked; }
+
+  async function setMode(m) {
+    if (m === MODE) return;
+    await AICB.api(`/api/projects/${PROJECT_ID}`, { method: "PATCH", body: { generationMode: m } });
+    window.location.reload();
+  }
+
+  async function saveShot(shotId, btn) {
+    const body = {};
+    document.querySelectorAll(`[data-shot="${shotId}"]`).forEach((el) => { body[el.dataset.field] = el.value; });
+    await AICB.run(btn, async () => {
+      await AICB.api(`/api/projects/${PROJECT_ID}/shots/${shotId}`, { method: "PATCH", body });
+      AICB.toast("Shot saved");
+    }, "Saving...");
+  }
+
+  // Per-step single-shot generation (vertical pipeline card buttons).
+  async function shotAction(btn, action, shotId, model) {
+    await AICB.run(btn, async () => {
+      if (model && !AICB.requireModel(model)) return;
+      if (!model && !AICB.requireModel("text")) return;
+      AICB.startPolling();
+      await AICB.generate(PROJECT_ID, action, { shotId, ratio: ratio() });
+      AICB.toast("Generation completed");
+      refreshShots();
+    }, "Generating...");
+  }
+
+  async function batchAction(btn, action, model, extra = {}) {
+    await AICB.run(btn, async () => {
+      if (!AICB.requireModel(model)) return;
+      AICB.startPolling();
+      await AICB.generate(PROJECT_ID, action, { overwrite: overwrite(), ratio: ratio(), ...extra });
+      AICB.toast("Batch generation finished");
+      refreshShots();
+    }, "Generating...");
+  }
+
+  // Reference mode step 2 = ref prompts + ref image generation.
+  async function batchRefImages(btn) {
+    await AICB.run(btn, async () => {
+      if (!AICB.requireModel("text") || !AICB.requireModel("image")) return;
+      AICB.startPolling();
+      await AICB.generate(PROJECT_ID, "generate_ref_prompts", { overwrite: overwrite() });
+      await AICB.generate(PROJECT_ID, "batch_ref_image_generate", { overwrite: overwrite(), ratio: ratio() });
+      AICB.toast("Reference images generated");
+      refreshShots();
+    }, "Generating...");
+  }
+
+  // Auto-Run: complete missing steps in order (task_plan.md P0-C).
+  async function autoRun(btn) {
+    if (!confirm("Complete all missing steps in order. Continue?")) return;
+    await AICB.run(btn, async () => {
+      const status = document.getElementById("batch-status");
+      AICB.startPolling();
+      if (MODE === "reference") {
+        status.textContent = "Step 2/4: reference images...";
+        await AICB.generate(PROJECT_ID, "generate_ref_prompts", {});
+        await AICB.generate(PROJECT_ID, "batch_ref_image_generate", { ratio: ratio() });
+      } else {
+        status.textContent = "Step 2/4: frames...";
+        await AICB.generate(PROJECT_ID, "batch_frame_generate", { ratio: ratio() });
+      }
+      status.textContent = "Step 3/4: video prompts...";
+      await AICB.generate(PROJECT_ID, "batch_video_prompt", {});
+      status.textContent = "Step 4/4: videos...";
+      await AICB.generate(PROJECT_ID, MODE === "reference" ? "batch_reference_video" : "batch_video_generate", { ratio: ratio() });
+      status.textContent = "";
+      AICB.toast("Auto-run complete");
+      refreshShots();
+    }, "Running...");
+  }
+
+  document.getElementById("btn-new-version").onclick = (e) =>
+    AICB.run(e.target, async () => {
+      if (!AICB.requireModel("text")) return;
+      if (!confirm("Create a new storyboard version by re-splitting the script into shots?")) return;
+      AICB.startPolling();
+      await AICB.generate(PROJECT_ID, "shot_split", {});
+      AICB.toast("New version created");
+      window.location.href = `/project/${PROJECT_ID}/storyboard`;
+    }, "Splitting...");
+
+  function refreshShots() {
+    const el = document.querySelector("#shots-area");
+    if (el && window.htmx) htmx.trigger(el, "poll"); else window.location.reload();
+  }
+</script>
+{% endblock %}

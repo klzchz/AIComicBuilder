@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Characters — {{ project.title }}{% endblock %}
+{% block content %}
+<div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+  <h1 class="text-lg font-semibold text-slate-100">Characters</h1>
+  <div class="flex flex-wrap gap-2">
+    <button id="btn-extract" class="rounded-lg border border-line px-3 py-1.5 text-xs text-slate-300 hover:bg-surface-2">Parse Characters</button>
+    <button id="btn-batch-images" class="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-soft">Batch Generate Turnarounds</button>
+  </div>
+</div>
+
+{% if not characters_main and not characters_guest %}
+<p class="mb-5 rounded-xl border border-dashed border-line p-10 text-center text-sm text-slate-500">
+  No characters yet. Click "Parse Characters" to extract characters from the script.
+</p>
+{% endif %}
+
+{% include "_characters_grid.html" %}
+
+<!-- PORT NOTE: character relations graph, costumes and per-character reference
+     image history (src/components/editor/character-relations.tsx,
+     character-card.tsx history arrows) are deferred — the API endpoints exist
+     under /api/projects/{id}/character-relations and .../costumes. -->
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const PROJECT_ID = {{ project.id | tojson }};
+
+  function fieldsFor(cid) {
+    const out = {};
+    document.querySelectorAll(`[data-cid="${cid}"]`).forEach((el) => { out[el.dataset.field] = el.value; });
+    return out;
+  }
+
+  async function saveCharacter(cid, btn) {
+    await AICB.run(btn, async () => {
+      await AICB.api(`/api/projects/${PROJECT_ID}/characters/${cid}`, { method: "PATCH", body: fieldsFor(cid) });
+      AICB.toast("Character saved");
+    }, "Saving...");
+  }
+
+  async function generateTurnaround(cid, btn) {
+    await AICB.run(btn, async () => {
+      if (!AICB.requireModel("image")) return;
+      AICB.startPolling();
+      await AICB.generate(PROJECT_ID, "single_character_image", { characterId: cid });
+      AICB.toast("Turnaround generated");
+      window.location.reload();
+    }, "Generating...");
+  }
+
+  async function uploadCharacterImage(cid, input) {
+    if (!input.files.length) return;
+    const fd = new FormData();
+    fd.append("file", input.files[0]);
+    try {
+      await AICB.api(`/api/projects/${PROJECT_ID}/characters/${cid}/upload`, { method: "POST", body: fd });
+      AICB.toast("Reference image uploaded");
+      window.location.reload();
+    } catch (e) {
+      AICB.toast(e.message, "error");
+    }
+  }
+
+  async function deleteCharacter(cid, name) {
+    if (!confirm(`Are you sure you want to delete "${name}"?`)) return;
+    try {
+      await AICB.api(`/api/projects/${PROJECT_ID}/characters/${cid}`, { method: "DELETE" });
+      window.location.reload();
+    } catch (e) {
+      AICB.toast(e.message, "error");
+    }
+  }
+
+  document.getElementById("btn-extract").onclick = (e) =>
+    AICB.run(e.target, async () => {
+      if (!AICB.requireModel("text")) return;
+      await AICB.generate(PROJECT_ID, "character_extract", {});
+      AICB.toast("Characters extracted");
+      window.location.reload();
+    }, "Extracting...");
+
+  document.getElementById("btn-batch-images").onclick = (e) =>
+    AICB.run(e.target, async () => {
+      if (!AICB.requireModel("image")) return;
+      AICB.startPolling();
+      await AICB.generate(PROJECT_ID, "batch_character_image", {});
+      AICB.toast("Batch turnaround generation finished");
+      window.location.reload();
+    }, "Generating...");
+</script>
+{% endblock %}

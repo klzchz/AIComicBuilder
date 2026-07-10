@@ -1,0 +1,6 @@
+/* Small helpers on top of Tailwind Play CDN */
+dialog::backdrop { background: rgba(3, 6, 12, 0.7); }
+dialog { color: inherit; }
+.spin { animation: spin 1s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+textarea { field-sizing: content; }

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}AI Comic Builder{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: { DEFAULT: '#0b0f17', 1: '#111827', 2: '#1a2332', 3: '#232f44' },
+            line: { DEFAULT: '#273349', soft: '#1e2940' },
+            accent: { DEFAULT: '#6366f1', soft: '#818cf8' },
+          },
+        },
+      },
+    };
+  </script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="min-h-screen bg-surface text-slate-200 antialiased" data-polling="0">
+  <header class="sticky top-0 z-40 border-b border-line-soft bg-surface/85 backdrop-blur">
+    <div class="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 lg:px-6">
+      <a href="/" class="flex items-center gap-2">
+        <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-accent/20 text-accent-soft font-bold">A</span>
+        <span class="text-sm font-semibold tracking-wide text-slate-100">AI Comic Builder</span>
+      </a>
+      <nav class="flex items-center gap-1 text-sm">
+        <a href="/" class="rounded-lg px-3 py-1.5 text-slate-400 hover:bg-surface-2 hover:text-slate-100">Projects</a>
+        <a href="/settings" class="rounded-lg px-3 py-1.5 text-slate-400 hover:bg-surface-2 hover:text-slate-100">Settings</a>
+      </nav>
+    </div>
+  </header>
+
+  {% if project is defined and project %}
+  <div class="border-b border-line-soft bg-surface-1">
+    <div class="mx-auto flex max-w-7xl items-center justify-between px-4 lg:px-6">
+      <div class="flex min-w-0 items-center gap-4">
+        <h1 class="truncate py-3 text-sm font-semibold text-slate-100" title="{{ project.title }}">{{ project.title }}</h1>
+        <span class="rounded-full border border-line px-2 py-0.5 text-[10px] uppercase tracking-wider text-slate-400">
+          {{ 'Reference Image Mode' if project.generation_mode == 'reference' else 'Keyframe Mode' }}
+        </span>
+      </div>
+      <nav class="flex gap-1 text-sm">
+        {% for tab, label in [('script','Script'),('characters','Characters'),('storyboard','Storyboard'),('preview','Preview'),('settings','Settings')] %}
+        <a href="/project/{{ project.id }}/{{ tab }}"
+           class="border-b-2 px-3 py-3 {{ 'border-accent text-slate-100' if active_tab == tab else 'border-transparent text-slate-400 hover:text-slate-200' }}">{{ label }}</a>
+        {% endfor %}
+      </nav>
+    </div>
+  </div>
+  {% endif %}
+
+  <main class="mx-auto max-w-7xl px-4 py-6 lg:px-6">
+    {% block content %}{% endblock %}
+  </main>
+
+  <div id="toasts" class="fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2"></div>
+
+  <script src="/static/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

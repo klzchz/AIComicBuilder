@@ -52,3 +52,10 @@ run_kling.sh
 
 # scratchpad clones (not part of project)
 /tmp/
+# python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/

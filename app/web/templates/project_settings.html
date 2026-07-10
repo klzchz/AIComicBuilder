@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Settings — {{ project.title }}{% endblock %}
+{% block content %}
+
+<div class="mx-auto max-w-3xl space-y-6">
+  <div>
+    <h1 class="text-lg font-semibold text-slate-100">Project Agents</h1>
+    <p class="mt-1 text-xs text-slate-500">
+      Bind a configured agent to each generation step for this project. Steps left unbound fall back to the
+      default model + prompt registry. Manage agents themselves under
+      <a href="/settings" class="text-accent-soft hover:underline">global Settings</a>.
+    </p>
+  </div>
+
+  {% if not agents %}
+  <p class="rounded-xl border border-dashed border-line p-8 text-center text-sm text-slate-500">
+    No agents configured yet. Add one in <a href="/settings" class="text-accent-soft hover:underline">Settings → Agents</a> first.
+  </p>
+  {% endif %}
+
+  <section class="rounded-2xl border border-line-soft bg-surface-1 p-5">
+    <div class="space-y-3">
+      {% for category, label in agent_categories %}
+      {% set eligible = agents | selectattr('category', 'equalto', category) | list %}
+      <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface-2 px-4 py-3">
+        <div class="min-w-0">
+          <div class="text-sm font-medium text-slate-100">{{ label }}</div>
+          <div class="text-[11px] text-slate-500 font-mono">{{ category }}</div>
+        </div>
+        <select onchange="bindAgent('{{ category }}', this.value, this)"
+                class="w-56 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-accent">
+          <option value="">Default (model + prompt registry)</option>
+          {% for a in eligible %}
+          <option value="{{ a.id }}" {{ 'selected' if bindings.get(category) == a.id else '' }}>{{ a.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- PORT NOTE: per-project prompt overrides (src/components/prompt-templates/project-prompt-cards.tsx),
+       world setting / color palette / target duration project fields, and character-relations editing are
+       deferred. APIs exist at /api/projects/{id}/prompt-templates and /api/projects/{id}. -->
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const PROJECT_ID = {{ project.id | tojson }};
+  async function bindAgent(category, agentId, sel) {
+    const prev = sel.dataset.prev || "";
+    try {
+      await AICB.api(`/api/projects/${PROJECT_ID}/agent-bindings`, {
+        method: "PUT", body: { category, agentId: agentId || null },
+      });
+      sel.dataset.prev = agentId;
+      AICB.toast("Agent binding updated");
+    } catch (e) {
+      sel.value = prev;
+      AICB.toast(e.message, "error");
+    }
+  }
+  document.querySelectorAll("select[onchange^='bindAgent']").forEach((s) => (s.dataset.prev = s.value));
+</script>
+{% endblock %}

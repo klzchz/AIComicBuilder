@@ -1,0 +1,148 @@
+{# Vertical-pipeline shot card — port of src/components/editor/shot-card.tsx
+   per task_plan.md P0-A: header + 4 always-visible steps with per-step status
+   (✓ done / ○ todo / ⟳ running / ✗ failed) and per-step generate buttons. #}
+
+{% macro step_icon(state) %}
+  {% if state == 'done' %}<span class="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-900/70 text-[11px] text-emerald-300">&#10003;</span>
+  {% elif state == 'running' %}<span class="spin flex h-5 w-5 items-center justify-center rounded-full bg-amber-900/70 text-[11px] text-amber-300">&#9696;</span>
+  {% elif state == 'failed' %}<span class="flex h-5 w-5 items-center justify-center rounded-full bg-red-900/70 text-[11px] text-red-300">&#10007;</span>
+  {% else %}<span class="flex h-5 w-5 items-center justify-center rounded-full border border-line text-[11px] text-slate-600">&#9675;</span>{% endif %}
+{% endmacro %}
+
+{% macro dot(state) %}
+  <span class="h-1.5 w-1.5 rounded-full {{ {'done':'bg-emerald-400','running':'bg-amber-400','failed':'bg-red-400'}.get(state, 'bg-slate-700') }}"></span>
+{% endmacro %}
+
+{% macro gen_btn(label, onclick, primary=False) %}
+  <button onclick="{{ onclick }}"
+          class="rounded-lg px-2.5 py-1 text-[11px] font-medium {{ 'bg-accent text-white hover:bg-accent-soft' if primary else 'border border-line text-slate-300 hover:bg-surface-2' }}">
+    {{ label }}</button>
+{% endmacro %}
+
+{% macro shot_card(card, mode, compact=False) %}
+{% set shot = card.shot %}
+{% set steps = card.steps %}
+<div class="rounded-2xl border {{ 'border-red-900/60' if steps.any_failed else 'border-line-soft' }} bg-surface-1">
+  <!-- header -->
+  <div class="flex items-center justify-between border-b border-line-soft px-4 py-2.5">
+    <div class="flex items-center gap-3">
+      <span class="text-sm font-semibold text-slate-100">Shot {{ shot.sequence }}</span>
+      <span class="text-[11px] text-slate-500">{{ shot.duration }}s · {{ shot.camera_direction }}</span>
+      {% if shot.is_stale %}<span class="rounded-full bg-amber-900/60 px-2 py-0.5 text-[10px] text-amber-300">Outdated</span>{% endif %}
+    </div>
+    <div class="flex items-center gap-1.5" title="text / frames / video prompt / video">
+      {{ dot(steps.text) }}{{ dot(steps.frames) }}{{ dot(steps.video_prompt) }}{{ dot(steps.video) }}
+    </div>
+  </div>
+
+  {% if not compact %}
+  <div class="divide-y divide-line-soft">
+    <!-- Step 1: scene text -->
+    <div class="flex gap-3 px-4 py-3">
+      {{ step_icon(steps.text) }}
+      <div class="min-w-0 flex-1">
+        <div class="mb-1.5 flex items-center justify-between">
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Scene Text</span>
+          <div class="flex gap-1.5">
+            {{ gen_btn('Save', "saveShot('" ~ shot.id ~ "', this)") }}
+            {{ gen_btn('Rewrite Text', "shotAction(this, 'single_shot_rewrite', '" ~ shot.id ~ "')", steps.next == 'text') }}
+          </div>
+        </div>
+        <textarea data-shot="{{ shot.id }}" data-field="prompt" rows="2" placeholder="Scene Description"
+                  class="mb-1.5 w-full rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-xs leading-relaxed outline-none focus:border-accent">{{ shot.prompt }}</textarea>
+        <textarea data-shot="{{ shot.id }}" data-field="videoScript" rows="2" placeholder="Motion Script"
+                  class="w-full rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-xs leading-relaxed outline-none focus:border-accent">{{ shot.video_script }}</textarea>
+        {% if shot.dialogues %}
+        <details class="mt-1.5">
+          <summary class="cursor-pointer text-[11px] text-slate-500">Dialogue ({{ shot.dialogues | length }})</summary>
+          <ul class="mt-1 space-y-0.5 text-[11px] text-slate-400">
+            {% for d in shot.dialogues %}<li><span class="text-slate-300">{{ d.character }}:</span> {{ d.text }}</li>{% endfor %}
+          </ul>
+        </details>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Step 2: frames -->
+    <div class="flex gap-3 px-4 py-3">
+      {{ step_icon(steps.frames) }}
+      <div class="min-w-0 flex-1">
+        <div class="mb-1.5 flex items-center justify-between">
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            {{ 'Reference Images' if mode == 'reference' else 'Keyframes' }}</span>
+          {% if mode == 'reference' %}
+            {{ gen_btn('Generate Ref Images', "shotAction(this, 'single_ref_image_generate_all', '" ~ shot.id ~ "', 'image')", steps.next == 'frames') }}
+          {% else %}
+            {{ gen_btn('Generate Frames', "shotAction(this, 'single_frame_generate', '" ~ shot.id ~ "', 'image')", steps.next == 'frames') }}
+          {% endif %}
+        </div>
+        {% if mode == 'reference' %}
+          {% if shot.references %}
+          <div class="flex flex-wrap gap-2">
+            {% for r in shot.references %}
+            <div class="h-20 w-32 overflow-hidden rounded-lg border border-line bg-surface-2" title="{{ r.prompt }}">
+              {% if r.url %}<img src="{{ r.url }}" class="h-full w-full object-cover">
+              {% else %}<div class="flex h-full items-center justify-center px-1 text-center text-[9px] text-slate-600">{{ r.status }}</div>{% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}<p class="text-[11px] text-slate-600">No reference image prompts yet</p>{% endif %}
+        {% else %}
+          <div class="grid grid-cols-2 gap-2">
+            {% for label, fr in [('First Frame', shot.first_frame), ('Last Frame', shot.last_frame)] %}
+            <div>
+              <div class="mb-1 text-[10px] text-slate-500">{{ label }}</div>
+              <div class="aspect-video overflow-hidden rounded-lg border border-line bg-surface-2" title="{{ fr.prompt if fr else '' }}">
+                {% if fr and fr.url %}<img src="{{ fr.url }}" class="h-full w-full object-cover">
+                {% elif fr %}<div class="flex h-full items-center justify-center text-[10px] text-slate-600">{{ fr.status }}</div>
+                {% else %}<div class="flex h-full items-center justify-center text-[10px] text-slate-600">No frame</div>{% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Step 3: video prompt -->
+    <div class="flex gap-3 px-4 py-3">
+      {{ step_icon(steps.video_prompt) }}
+      <div class="min-w-0 flex-1">
+        <div class="mb-1.5 flex items-center justify-between">
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Video Prompt</span>
+          <div class="flex gap-1.5">
+            {{ gen_btn('Save', "saveShot('" ~ shot.id ~ "', this)") }}
+            {{ gen_btn('Generate Video Prompt', "shotAction(this, 'single_video_prompt', '" ~ shot.id ~ "')", steps.next == 'video_prompt') }}
+          </div>
+        </div>
+        <textarea data-shot="{{ shot.id }}" data-field="videoPrompt" rows="2" placeholder="Video prompt..."
+                  class="w-full rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-xs leading-relaxed outline-none focus:border-accent">{{ shot.video_prompt }}</textarea>
+      </div>
+    </div>
+
+    <!-- Step 4: video -->
+    <div class="flex gap-3 px-4 py-3">
+      {{ step_icon(steps.video) }}
+      <div class="min-w-0 flex-1">
+        <div class="mb-1.5 flex items-center justify-between">
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Video</span>
+          {% if mode == 'reference' %}
+            {{ gen_btn('Generate Video', "shotAction(this, 'single_reference_video', '" ~ shot.id ~ "', 'video')", steps.next == 'video') }}
+          {% else %}
+            {{ gen_btn('Generate Video', "shotAction(this, 'single_video_generate', '" ~ shot.id ~ "', 'video')", steps.next == 'video') }}
+          {% endif %}
+        </div>
+        {% set vid = shot.reference_video if mode == 'reference' else shot.keyframe_video %}
+        {% if vid and vid.url %}
+        <video src="{{ vid.url }}" controls preload="metadata" class="max-h-56 w-full rounded-lg border border-line bg-black"></video>
+        {% elif vid %}
+        <div class="flex aspect-video max-h-40 items-center justify-center rounded-lg border border-line bg-surface-2 text-[11px] text-slate-600">{{ vid.status }}</div>
+        {% else %}
+        <div class="flex h-16 items-center justify-center rounded-lg border border-dashed border-line text-[11px] text-slate-600">Not generated</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}

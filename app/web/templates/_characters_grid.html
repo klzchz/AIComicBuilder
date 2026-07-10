@@ -1,0 +1,69 @@
+{# Character grid partial — polled by HTMX while batch generation runs. #}
+{% macro character_card(c) %}
+<div class="rounded-2xl border border-line-soft bg-surface-1 p-4">
+  <div class="mb-3 flex gap-3">
+    <div class="h-28 w-28 shrink-0 overflow-hidden rounded-xl border border-line bg-surface-2">
+      {% if c.reference_image %}
+      <img src="{{ c.reference_image }}" alt="{{ c.name }}" class="h-full w-full object-cover">
+      {% else %}
+      <div class="flex h-full w-full items-center justify-center text-[10px] text-slate-600">No image</div>
+      {% endif %}
+    </div>
+    <div class="min-w-0 flex-1 space-y-2">
+      <input value="{{ c.name }}" data-field="name" data-cid="{{ c.id }}"
+             class="w-full rounded-lg border border-line bg-surface-2 px-2 py-1 text-sm font-semibold outline-none focus:border-accent">
+      <input value="{{ c.visual_hint }}" data-field="visualHint" data-cid="{{ c.id }}"
+             placeholder="Visual ID (e.g. silver hair, gold eyes)"
+             class="w-full rounded-lg border border-line bg-surface-2 px-2 py-1 text-xs text-slate-300 outline-none focus:border-accent">
+      <select data-field="scope" data-cid="{{ c.id }}"
+              class="w-full rounded-lg border border-line bg-surface-2 px-2 py-1 text-xs text-slate-300 outline-none focus:border-accent">
+        <option value="main" {{ 'selected' if c.scope == 'main' }}>Main Character</option>
+        <option value="guest" {{ 'selected' if c.scope != 'main' }}>Guest Character</option>
+      </select>
+    </div>
+  </div>
+  <textarea data-field="description" data-cid="{{ c.id }}" rows="3" placeholder="Description"
+            class="mb-3 w-full rounded-lg border border-line bg-surface-2 px-2 py-1.5 text-xs leading-relaxed text-slate-300 outline-none focus:border-accent">{{ c.description }}</textarea>
+  <div class="flex flex-wrap items-center gap-2">
+    <button onclick="saveCharacter('{{ c.id }}', this)"
+            class="rounded-lg border border-line px-2.5 py-1 text-xs text-slate-300 hover:bg-surface-2">Save</button>
+    <button onclick="generateTurnaround('{{ c.id }}', this)"
+            class="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-white hover:bg-accent-soft">Generate Turnaround</button>
+    <label class="cursor-pointer rounded-lg border border-line px-2.5 py-1 text-xs text-slate-300 hover:bg-surface-2">
+      Upload Image
+      <input type="file" accept="image/*" class="hidden" onchange="uploadCharacterImage('{{ c.id }}', this)">
+    </label>
+    <button onclick="deleteCharacter('{{ c.id }}', {{ c.name | tojson }})"
+            class="ml-auto rounded-lg px-2 py-1 text-xs text-slate-500 hover:text-red-400">Delete</button>
+  </div>
+</div>
+{% endmacro %}
+
+<div id="characters-grid"
+     data-poll
+     hx-get="/project/{{ project.id }}/characters/partial"
+     hx-trigger="poll, every 5s [document.body.dataset.polling === '1']"
+     hx-swap="outerHTML">
+
+  <section class="mb-8">
+    <h2 class="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Main Characters</h2>
+    {% if characters_main %}
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {% for c in characters_main %}{{ character_card(c) }}{% endfor %}
+    </div>
+    {% else %}
+    <p class="rounded-xl border border-dashed border-line p-8 text-center text-xs text-slate-500">No main characters yet</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2 class="mb-3 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Guest Characters</h2>
+    {% if characters_guest %}
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {% for c in characters_guest %}{{ character_card(c) }}{% endfor %}
+    </div>
+    {% else %}
+    <p class="rounded-xl border border-dashed border-line p-8 text-center text-xs text-slate-500">No guest characters yet</p>
+    {% endif %}
+  </section>
+</div>

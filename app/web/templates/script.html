@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Script — {{ project.title }}{% endblock %}
+{% block content %}
+<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+
+  <!-- Left: idea + outline -->
+  <section class="space-y-5">
+    <div class="rounded-2xl border border-line-soft bg-surface-1 p-5">
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Creative Idea</h2>
+        <button id="btn-outline" class="rounded-lg border border-line px-3 py-1.5 text-xs text-slate-300 hover:bg-surface-2">Generate Outline</button>
+      </div>
+      <textarea id="idea" rows="5" placeholder="Enter your creative idea..."
+                class="w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm leading-relaxed outline-none focus:border-accent">{{ project.idea }}</textarea>
+    </div>
+
+    <div class="rounded-2xl border border-line-soft bg-surface-1 p-5">
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Story Outline</h2>
+        <button id="btn-genscript" class="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-soft">AI Generate Script</button>
+      </div>
+      <textarea id="outline" rows="12" placeholder="Story outline will appear here..."
+                class="w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm leading-relaxed outline-none focus:border-accent">{{ project.outline }}</textarea>
+    </div>
+  </section>
+
+  <!-- Right: script -->
+  <section class="rounded-2xl border border-line-soft bg-surface-1 p-5">
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <h2 class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Script</h2>
+      <div class="flex flex-wrap gap-2">
+        <button onclick="document.getElementById('upload-dialog').showModal()"
+                class="rounded-lg border border-line px-3 py-1.5 text-xs text-slate-300 hover:bg-surface-2">Upload Script</button>
+        <button id="btn-save" class="rounded-lg border border-line px-3 py-1.5 text-xs text-slate-300 hover:bg-surface-2">Save</button>
+        <button id="btn-parse" class="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-soft">AI Parse Script</button>
+      </div>
+    </div>
+    <textarea id="script" rows="26" placeholder="Enter your story or script here..."
+              class="w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm leading-relaxed outline-none focus:border-accent">{{ project.script }}</textarea>
+    <p class="mt-2 text-[11px] text-slate-500">
+      AI Parse Script extracts characters and splits the script into shots — check the Characters and Storyboard tabs afterwards.
+    </p>
+    <pre id="parse-log" class="mt-3 hidden max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-surface-2 p-3 text-[11px] text-slate-400"></pre>
+  </section>
+</div>
+
+<dialog id="upload-dialog" class="w-full max-w-md rounded-2xl border border-line bg-surface-1 p-6 text-slate-200">
+  <h2 class="mb-1 text-base font-semibold text-slate-100">Upload Script</h2>
+  <p class="mb-4 text-xs text-slate-500">Supports TXT, DOCX, PDF, Markdown — max 20MB</p>
+  <form id="upload-form" method="dialog" class="space-y-4">
+    <input type="file" name="file" accept=".txt,.md,.docx,.pdf" required
+           class="w-full rounded-lg border border-dashed border-line bg-surface-2 p-4 text-xs text-slate-400 file:mr-3 file:rounded-lg file:border-0 file:bg-surface-3 file:px-3 file:py-1.5 file:text-xs file:text-slate-200">
+    <div class="flex justify-end gap-2">
+      <button type="button" onclick="document.getElementById('upload-dialog').close()"
+              class="rounded-lg border border-line px-4 py-2 text-sm text-slate-300 hover:bg-surface-2">Cancel</button>
+      <button type="submit" class="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-soft">Upload</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const PROJECT_ID = {{ project.id | tojson }};
+  const $ = (id) => document.getElementById(id);
+
+  async function saveScriptFields(fields) {
+    await AICB.api(`/api/projects/${PROJECT_ID}`, { method: "PATCH", body: fields });
+  }
+
+  $("btn-save").onclick = (e) =>
+    AICB.run(e.target, async () => {
+      await saveScriptFields({ idea: $("idea").value, outline: $("outline").value, script: $("script").value });
+      AICB.toast("Saved");
+    }, "Saving...");
+
+  $("btn-outline").onclick = (e) =>
+    AICB.run(e.target, async () => {
+      if (!AICB.requireModel("text")) return;
+      const idea = $("idea").value.trim();
+      if (!idea) return AICB.toast("Enter a creative idea first", "error");
+      $("outline").value = "";
+      const res = await AICB.generate(PROJECT_ID, "script_outline", { idea }, {
+        onText: (_c, full) => { $("outline").value = full; },
+      });
+      if (res.text !== undefined) $("outline").value = res.text;
+      else if (res.outline) $("outline").value = res.outline;
+      await saveScriptFields({ idea, outline: $("outline").value });
+      AICB.toast("Outline generated");
+    }, "Generating...");
+
+  $("btn-genscript").onclick = (e) =>
+    AICB.run(e.target, async () => {
+      if (!AICB.requireModel("text")) return;
+      const idea = $("idea").value.trim();
+      $("script").value = "";
+      const res = await AICB.generate(PROJECT_ID, "script_generate",
+        { idea, outline: $("outline").value }, {
+          onText: (_c, full) => { $("script").value = full; },
+        });
+      if (res.text !== undefined) $("script").value = res.text;
+      else if (res.script) $("script").value = res.script;
+      await saveScriptFields({ script: $("script").value });
+      AICB.toast("Script generated");
+    }, "Generating...");
+
+  $("btn-parse").onclick = (e) =>
+    AICB.run(e.target, async () => {
+      if (!AICB.requireModel("text")) return;
+      await saveScriptFields({ script: $("script").value });
+      const log = $("parse-log");
+      log.classList.remove("hidden");
+      log.textContent = "Parsing script...\n";
+      await AICB.generate(PROJECT_ID, "script_parse", {}, {
+        onText: (chunk) => { log.textContent += chunk; log.scrollTop = log.scrollHeight; },
+      });
+      AICB.toast("Script parsed — see Characters & Storyboard");
+      window.location.href = `/project/${PROJECT_ID}/storyboard`;
+    }, "Parsing...");
+
+  document.getElementById("upload-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    AICB.run(e.submitter, async () => {
+      if (!AICB.requireModel("text")) return;
+      const fd = new FormData();
+      fd.append("file", e.target.file.files[0]);
+      fd.append("modelConfig", JSON.stringify(AICB.modelConfig()));
+      await AICB.api(`/api/projects/${PROJECT_ID}/upload-script`, { method: "POST", body: fd });
+      AICB.toast("Script uploaded");
+      window.location.reload();
+    }, "Uploading...");
+  });
+</script>
+{% endblock %}

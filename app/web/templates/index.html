@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}My Projects — AI Comic Builder{% endblock %}
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+  <h1 class="text-xl font-semibold text-slate-100">My Projects</h1>
+  <button onclick="document.getElementById('create-dialog').showModal()"
+          class="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-soft">
+    + New Project
+  </button>
+</div>
+
+{% if projects %}
+<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+  {% for p in projects %}
+  <div class="group relative rounded-2xl border border-line-soft bg-surface-1 p-5 transition hover:border-line">
+    <a href="/project/{{ p.id }}/script" class="block">
+      <div class="mb-2 flex items-start justify-between gap-2">
+        <h2 class="truncate text-sm font-semibold text-slate-100">{{ p.title }}</h2>
+        {% set badge = {'draft': ('Draft','bg-slate-800 text-slate-300'),
+                        'processing': ('Processing','bg-amber-900/60 text-amber-300'),
+                        'completed': ('Completed','bg-emerald-900/60 text-emerald-300')}.get(p.status, ('Draft','bg-slate-800 text-slate-300')) %}
+        <span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium {{ badge[1] }}">{{ badge[0] }}</span>
+      </div>
+      <p class="mb-4 line-clamp-2 min-h-[2rem] text-xs text-slate-400">{{ p.idea or 'No idea yet.' }}</p>
+      <div class="flex items-center gap-2 text-[11px] text-slate-500">
+        <span>{{ 'Reference Image Mode' if p.generation_mode == 'reference' else 'Keyframe Mode' }}</span>
+      </div>
+    </a>
+    <button title="Delete Project"
+            onclick="deleteProject('{{ p.id }}', {{ p.title | tojson }})"
+            class="absolute bottom-4 right-4 hidden rounded-lg border border-line px-2 py-1 text-xs text-slate-400 hover:border-red-800 hover:text-red-400 group-hover:block">
+      Delete
+    </button>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="rounded-2xl border border-dashed border-line p-16 text-center text-sm text-slate-500">
+  No projects yet. Click the button above to create one.
+</div>
+{% endif %}
+
+<dialog id="create-dialog" class="w-full max-w-md rounded-2xl border border-line bg-surface-1 p-6 text-slate-200">
+  <h2 class="mb-4 text-base font-semibold text-slate-100">New Project</h2>
+  <form id="create-form" method="dialog" class="space-y-4">
+    <div>
+      <label class="mb-1 block text-xs font-medium text-slate-400">Project Title</label>
+      <input name="title" required placeholder="My first comic"
+             class="w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent">
+    </div>
+    <div>
+      <label class="mb-1 block text-xs font-medium text-slate-400">Creative Idea</label>
+      <textarea name="idea" rows="3" placeholder="Enter your creative idea..."
+                class="w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent"></textarea>
+    </div>
+    <div>
+      <label class="mb-1 block text-xs font-medium text-slate-400">Generation Mode</label>
+      <select name="generationMode" class="w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent">
+        <option value="keyframe">Keyframe Mode (first/last frame → video)</option>
+        <option value="reference">Reference Image Mode (reference images → video)</option>
+      </select>
+    </div>
+    <div class="flex justify-end gap-2 pt-2">
+      <button type="button" onclick="document.getElementById('create-dialog').close()"
+              class="rounded-lg border border-line px-4 py-2 text-sm text-slate-300 hover:bg-surface-2">Cancel</button>
+      <button type="submit" class="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-soft">Create</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById("create-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    await AICB.run(e.submitter, async () => {
+      // POST /api/projects accepts { title }; idea + generationMode via PATCH (mirrors create dialog flow).
+      const project = await AICB.api("/api/projects", { method: "POST", body: { title: f.get("title") } });
+      await AICB.api(`/api/projects/${project.id}`, {
+        method: "PATCH",
+        body: { idea: f.get("idea") || "", generationMode: f.get("generationMode") },
+      });
+      window.location.href = `/project/${project.id}/script`;
+    }, "Creating...");
+  });
+
+  async function deleteProject(id, title) {
+    if (!confirm(`Are you sure you want to delete "${title}"? This action cannot be undone and all related data will be permanently deleted.`)) return;
+    try {
+      await AICB.api(`/api/projects/${id}`, { method: "DELETE" });
+      window.location.reload();
+    } catch (e) {
+      AICB.toast(e.message, "error");
+    }
+  }
+</script>
+{% endblock %}

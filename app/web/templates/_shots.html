@@ -1,0 +1,40 @@
+{# Shot list / kanban partial — polled by HTMX while generation runs. #}
+{% from "_shot_card.html" import shot_card %}
+
+<div id="shots-area"
+     data-poll
+     hx-get="/project/{{ project.id }}/storyboard/partial?versionId={{ active_version or '' }}&view={{ view }}"
+     hx-trigger="poll, every 4s [document.body.dataset.polling === '1']"
+     hx-swap="outerHTML">
+
+  {% if any_running %}
+  <script>document.body.dataset.polling = "1";</script>
+  {% else %}
+  <script>document.body.dataset.polling = "0";</script>
+  {% endif %}
+
+  {% if not cards %}
+  <p class="rounded-2xl border border-dashed border-line p-12 text-center text-sm text-slate-500">
+    No shots yet. Generate shots from the script first.
+  </p>
+  {% elif view == 'kanban' %}
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+    {% for key, label in [('needs_frames','Needs Frames'), ('needs_prompt','Needs Prompt'), ('needs_video','Needs Video'), ('done','Done')] %}
+    <div class="rounded-2xl border border-line-soft bg-surface-1/50 p-3">
+      <div class="mb-3 flex items-center justify-between px-1">
+        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">{{ label }}</span>
+        <span class="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] text-slate-400">{{ kanban[key] | length }}</span>
+      </div>
+      <div class="space-y-3">
+        {% for card in kanban[key] %}{{ shot_card(card, mode, compact=True) }}{% endfor %}
+        {% if not kanban[key] %}<p class="p-4 text-center text-[11px] text-slate-600">Empty</p>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="space-y-4">
+    {% for card in cards %}{{ shot_card(card, mode) }}{% endfor %}
+  </div>
+  {% endif %}
+</div>

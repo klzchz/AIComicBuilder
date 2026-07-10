@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+{% block title %}Settings — AI Comic Builder{% endblock %}
+{% block content %}
+
+<div class="mx-auto max-w-4xl space-y-6">
+  <h1 class="text-xl font-semibold text-slate-100">Model Settings</h1>
+
+  <!-- Default models (resolved from checked provider models, persisted in localStorage) -->
+  <section class="rounded-2xl border border-line-soft bg-surface-1 p-5">
+    <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Default Models</h2>
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {% for kind, label in [('text','Text Model'), ('image','Image Model'), ('video','Video Model')] %}
+      <div class="space-y-1.5">
+        <label class="text-xs text-slate-400">{{ label }}</label>
+        <select data-default="{{ kind }}"
+                class="w-full rounded-lg border border-line bg-surface-2 px-2.5 py-2 text-xs text-slate-200 outline-none focus:border-accent">
+          <option value="">— none —</option>
+        </select>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="mt-3 text-[11px] text-slate-500">Check models inside a provider below to make them selectable here. Stored locally in your browser.</p>
+  </section>
+
+  <!-- Prompt Templates (global overrides) -->
+  <section class="rounded-2xl border border-line-soft bg-surface-1 p-5">
+    <div class="mb-3 flex items-center justify-between">
+      <h2 class="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Prompt Templates</h2>
+      <span class="text-[11px] text-slate-500">{{ prompt_templates | length }} global override(s)</span>
+    </div>
+    {% if prompt_templates %}
+    <div class="space-y-2">
+      {% for t in prompt_templates %}
+      <details class="rounded-lg border border-line bg-surface-2">
+        <summary class="cursor-pointer px-3 py-2 text-xs text-slate-300">
+          <span class="font-mono text-accent-soft">{{ t.prompt_key }}</span>{% if t.slot_key %} · {{ t.slot_key }}{% endif %}
+        </summary>
+        <div class="border-t border-line p-3">
+          <textarea rows="5" data-tpl-key="{{ t.prompt_key }}" data-tpl-slot="{{ t.slot_key or '' }}"
+                    class="w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-[11px] leading-relaxed outline-none focus:border-accent">{{ t.content }}</textarea>
+          <div class="mt-2 flex justify-end gap-2">
+            <button onclick="deleteTemplate(this, '{{ t.prompt_key }}')"
+                    class="rounded-lg border border-line px-3 py-1 text-[11px] text-slate-400 hover:border-red-800 hover:text-red-400">Reset</button>
+            <button onclick="saveTemplate(this, '{{ t.prompt_key }}', '{{ t.slot_key or '' }}')"
+                    class="rounded-lg bg-accent px-3 py-1 text-[11px] font-medium text-white hover:bg-accent-soft">Save</button>
+          </div>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-[11px] text-slate-500">No custom prompt overrides. Generation uses the built-in prompt registry defaults.</p>
+    {% endif %}
+    <!-- PORT NOTE: full prompt-template editor (registry browser, slot list, A/B presets,
+         version history) from src/components/prompt-templates/* is deferred. The APIs exist
+         at /api/prompt-templates, /api/prompt-templates/registry, .../preview, .../versions. -->
+  </section>
+
+  <!-- Agents (server-rendered initial state + JS CRUD against /api/agents) -->
+  <section class="rounded-2xl border border-line-soft bg-surface-1 p-5">
+    <div class="mb-4 flex items-center justify-between">
+      <h2 class="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Agents</h2>
+      <button onclick="document.getElementById('agent-dialog').showModal()"
+              class="rounded-lg border border-line px-3 py-1.5 text-xs text-slate-300 hover:bg-surface-2">+ Add Agent</button>
+    </div>
+    {% if agents %}
+    <div class="overflow-x-auto rounded-xl border border-line">
+      <table class="w-full text-left text-xs">
+        <thead class="bg-surface-2 text-[10px] uppercase tracking-wider text-slate-500">
+          <tr><th class="px-3 py-2">Name</th><th class="px-3 py-2">Platform</th><th class="px-3 py-2">Category</th><th class="px-3 py-2">App ID</th><th class="px-3 py-2"></th></tr>
+        </thead>
+        <tbody class="divide-y divide-line-soft">
+          {% for a in agents %}
+          <tr class="text-slate-300">
+            <td class="px-3 py-2.5 font-medium text-slate-100">{{ a.name }}</td>
+            <td class="px-3 py-2.5"><span class="rounded-full border border-line px-2 py-0.5 text-[10px] text-slate-400">{{ a.platform }}</span></td>
+            <td class="px-3 py-2.5"><span class="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] text-accent-soft">{{ a.category }}</span></td>
+            <td class="px-3 py-2.5 font-mono text-[11px] text-slate-500">{{ a.app_id }}</td>
+            <td class="px-3 py-2.5 text-right">
+              <button onclick="deleteAgent('{{ a.id }}', {{ a.name | tojson }})"
+                      class="rounded-lg border border-line px-2 py-1 text-[10px] text-slate-400 hover:border-red-800 hover:text-red-400">Delete</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-[11px] text-slate-500">No agents yet. Click "Add Agent" to connect a Bailian / Coze app.</p>
+    {% endif %}
+  </section>
+
+  <!-- Providers (per-capability, persisted in localStorage — port of provider-section.tsx) -->
+  {% for cap, label in [('text','Language Models'), ('image','Image Models'), ('video','Video Models')] %}
+  <section class="rounded-2xl border border-line-soft bg-surface-1 p-5">
+    <div class="mb-4 flex items-center justify-between">
+      <h2 class="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">{{ label }}</h2>
+      <button onclick="addProvider('{{ cap }}')"
+              class="rounded-lg border border-line px-3 py-1.5 text-xs text-slate-300 hover:bg-surface-2">+ Add Provider</button>
+    </div>
+    <div data-providers="{{ cap }}" class="space-y-4"></div>
+  </section>
+  {% endfor %}
+</div>
+
+<!-- Add Agent dialog -->
+<dialog id="agent-dialog" class="w-full max-w-lg rounded-2xl border border-line bg-surface-1 p-6 text-slate-200">
+  <h2 class="mb-4 text-base font-semibold text-slate-100">Add Agent</h2>
+  <form id="agent-form" method="dialog" class="space-y-3">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div><label class="mb-1 block text-xs text-slate-400">Name</label>
+        <input name="name" required class="w-full rounded-lg border border-line bg-surface-2 px-2.5 py-2 text-sm outline-none focus:border-accent"></div>
+      <div><label class="mb-1 block text-xs text-slate-400">Platform</label>
+        <select name="platform" class="w-full rounded-lg border border-line bg-surface-2 px-2.5 py-2 text-sm outline-none focus:border-accent">
+          <option value="bailian">Bailian</option><option value="coze">Coze</option><option value="dify">Dify</option>
+        </select></div>
+      <div><label class="mb-1 block text-xs text-slate-400">Category</label>
+        <select name="category" class="w-full rounded-lg border border-line bg-surface-2 px-2.5 py-2 text-sm outline-none focus:border-accent">
+          {% for value, label in agent_categories %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select></div>
+    </div>
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div><label class="mb-1 block text-xs text-slate-400">App ID</label>
+        <input name="appId" required placeholder="app-xxxx" class="w-full rounded-lg border border-line bg-surface-2 px-2.5 py-2 text-sm outline-none focus:border-accent"></div>
+      <div><label class="mb-1 block text-xs text-slate-400">API Key</label>
+        <input name="apiKey" type="password" required placeholder="sk-xxxx" class="w-full rounded-lg border border-line bg-surface-2 px-2.5 py-2 text-sm outline-none focus:border-accent"></div>
+    </div>
+    <div><label class="mb-1 block text-xs text-slate-400">Description</label>
+      <input name="description" class="w-full rounded-lg border border-line bg-surface-2 px-2.5 py-2 text-sm outline-none focus:border-accent"></div>
+    <div class="flex justify-end gap-2 pt-2">
+      <button type="button" onclick="document.getElementById('agent-dialog').close()"
+              class="rounded-lg border border-line px-4 py-2 text-sm text-slate-300 hover:bg-surface-2">Cancel</button>
+      <button type="submit" class="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-soft">Save</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ── Protocol options per capability (port of provider-form.tsx) ──────────────
+  const PROTOCOLS = {
+    text:  [["openai","OpenAI"],["gemini","Gemini"]],
+    image: [["openai","OpenAI"],["gemini","Gemini"],["kling","Kling"],["dashscope","Bailian (Image)"]],
+    video: [["seedance","Seedance"],["ucloud-seedance","Seedance (UCloud)"],["gemini","Gemini (Veo)"],["kling","Kling"],["wan","Bailian (Video)"]],
+  };
+  const DEFAULT_BASE = {
+    openai:"https://api.openai.com", gemini:"https://generativelanguage.googleapis.com",
+    seedance:"https://ark.cn-beijing.volces.com", "ucloud-seedance":"https://api.modelverse.cn",
+    kling:"https://api.klingai.com", wan:"https://dashscope.aliyuncs.com/api/v1", dashscope:"https://dashscope.aliyuncs.com/api/v1",
+  };
+
+  function uid() { return "p_" + Math.random().toString(36).slice(2, 10); }
+
+  function addProvider(cap) {
+    const s = AICB.store();
+    s.providers = s.providers || [];
+    const proto = PROTOCOLS[cap][0][0];
+    s.providers.push({ id: uid(), name: "", capability: cap, protocol: proto, baseUrl: DEFAULT_BASE[proto], apiKey: "", secretKey: "", models: [] });
+    AICB.saveStore(s);
+    renderAll();
+  }
+  function updateProvider(id, patch) {
+    const s = AICB.store();
+    const p = (s.providers || []).find((x) => x.id === id);
+    if (!p) return;
+    Object.assign(p, patch);
+    AICB.saveStore(s);
+  }
+  function removeProvider(id) {
+    const s = AICB.store();
+    s.providers = (s.providers || []).filter((x) => x.id !== id);
+    ["defaultTextModel","defaultImageModel","defaultVideoModel"].forEach((k) => { if (s[k] && s[k].providerId === id) s[k] = null; });
+    AICB.saveStore(s);
+    renderAll();
+  }
+  function toggleModel(pid, mid) {
+    const s = AICB.store();
+    const p = (s.providers || []).find((x) => x.id === pid);
+    const m = p && p.models.find((x) => x.id === mid);
+    if (m) { m.checked = !m.checked; AICB.saveStore(s); renderDefaults(); }
+  }
+  function addManualModel(pid, id) {
+    if (!id.trim()) return;
+    const s = AICB.store();
+    const p = (s.providers || []).find((x) => x.id === pid);
+    if (p && !p.models.some((m) => m.id === id)) { p.models.push({ id, name: id, checked: true }); AICB.saveStore(s); renderAll(); }
+  }
+
+  async function fetchModels(pid, btn) {
+    const s = AICB.store();
+    const p = (s.providers || []).find((x) => x.id === pid);
+    if (!p) return;
+    await AICB.run(btn, async () => {
+      const data = await AICB.api("/api/models/list", { method: "POST", body: { protocol: p.protocol, baseUrl: p.baseUrl, apiKey: p.apiKey } });
+      const checked = new Set(p.models.filter((m) => m.checked).map((m) => m.id));
+      p.models = (data.models || []).map((m) => ({ id: m.id, name: m.name, checked: checked.has(m.id) }));
+      AICB.saveStore(s);
+      renderAll();
+    }, "Fetching...");
+  }
+
+  // ── render providers ────────────────────────────────────────────────────────
+  function providerCard(p) {
+    const opts = PROTOCOLS[p.capability].map(([v, l]) =>
+      `<option value="${v}" ${p.protocol === v ? "selected" : ""}>${l}</option>`).join("");
+    const isKling = p.protocol === "kling";
+    const models = (p.models || []).map((m) => `
+      <label class="flex items-center gap-2 rounded-lg px-2 py-1 ${m.checked ? "bg-accent/10" : "hover:bg-surface-2"}">
+        <input type="checkbox" ${m.checked ? "checked" : ""} onchange="toggleModel('${p.id}','${m.id}')" class="accent-indigo-500">
+        <span class="min-w-0 flex-1 truncate text-[11px] ${m.checked ? "text-slate-100" : "text-slate-400"}" title="${m.id}">${m.name}</span>
+      </label>`).join("");
+    return `
+    <div class="rounded-xl border border-line bg-surface-2 p-4">
+      <div class="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+        <div><label class="mb-1 block text-[11px] text-slate-400">Provider Name</label>
+          <input value="${p.name || ""}" oninput="updateProvider('${p.id}',{name:this.value})" placeholder="e.g. OpenRouter"
+                 class="w-full rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs outline-none focus:border-accent"></div>
+        <div><label class="mb-1 block text-[11px] text-slate-400">Protocol</label>
+          <select onchange="updateProvider('${p.id}',{protocol:this.value,baseUrl:DEFAULT_BASE[this.value]});renderAll()"
+                  class="rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs outline-none focus:border-accent">${opts}</select></div>
+      </div>
+      <div class="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div><label class="mb-1 block text-[11px] text-slate-400">Base URL</label>
+          <input value="${p.baseUrl || ""}" oninput="updateProvider('${p.id}',{baseUrl:this.value})"
+                 class="w-full rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs outline-none focus:border-accent"></div>
+        <div><label class="mb-1 block text-[11px] text-slate-400">${isKling ? "Access Key (AK)" : "API Key"}</label>
+          <input type="password" value="${p.apiKey || ""}" oninput="updateProvider('${p.id}',{apiKey:this.value})" placeholder="sk-..."
+                 class="w-full rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs outline-none focus:border-accent"></div>
+        ${isKling ? `<div class="sm:col-span-2"><label class="mb-1 block text-[11px] text-slate-400">Secret Key (SK)</label>
+          <input type="password" value="${p.secretKey || ""}" oninput="updateProvider('${p.id}',{secretKey:this.value})"
+                 class="w-full rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs outline-none focus:border-accent"></div>` : ""}
+      </div>
+      <div class="mb-2 flex items-center justify-between">
+        <span class="text-[11px] font-medium text-slate-400">Models</span>
+        <div class="flex gap-1.5">
+          <button onclick="fetchModels('${p.id}', this)" class="rounded-lg border border-line px-2.5 py-1 text-[11px] text-slate-300 hover:bg-surface-3">Fetch Models</button>
+          <button onclick="removeProvider('${p.id}')" class="rounded-lg border border-line px-2.5 py-1 text-[11px] text-slate-400 hover:border-red-800 hover:text-red-400">Remove</button>
+        </div>
+      </div>
+      <div class="mb-2 flex gap-2">
+        <input id="mm-${p.id}" placeholder="Enter model_id manually..." onkeydown="if(event.key==='Enter'){addManualModel('${p.id}',this.value);this.value=''}"
+               class="flex-1 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[11px] outline-none focus:border-accent">
+        <button onclick="const i=document.getElementById('mm-${p.id}');addManualModel('${p.id}',i.value);i.value=''"
+                class="rounded-lg border border-line px-2.5 py-1 text-[11px] text-slate-300 hover:bg-surface-3">Add</button>
+      </div>
+      ${models ? `<div class="grid max-h-52 grid-cols-1 gap-0.5 overflow-y-auto rounded-lg border border-line p-1.5 sm:grid-cols-2">${models}</div>`
+                : `<p class="rounded-lg border border-dashed border-line p-3 text-center text-[11px] text-slate-600">No models. Fetch or add one manually.</p>`}
+    </div>`;
+  }
+
+  function renderProviders() {
+    const s = AICB.store();
+    document.querySelectorAll("[data-providers]").forEach((host) => {
+      const cap = host.dataset.providers;
+      const list = (s.providers || []).filter((p) => p.capability === cap);
+      host.innerHTML = list.length ? list.map(providerCard).join("")
+        : `<p class="rounded-xl border border-dashed border-line p-6 text-center text-xs text-slate-500">No providers yet. Add one to get started.</p>`;
+    });
+  }
+
+  function renderDefaults() {
+    const s = AICB.store();
+    const keyFor = { text: "defaultTextModel", image: "defaultImageModel", video: "defaultVideoModel" };
+    document.querySelectorAll("[data-default]").forEach((sel) => {
+      const cap = sel.dataset.default;
+      const cur = s[keyFor[cap]];
+      const opts = ['<option value="">— none —</option>'];
+      (s.providers || []).filter((p) => p.capability === cap).forEach((p) => {
+        p.models.filter((m) => m.checked).forEach((m) => {
+          const val = p.id + "::" + m.id;
+          const on = cur && cur.providerId === p.id && cur.modelId === m.id;
+          opts.push(`<option value="${val}" ${on ? "selected" : ""}>${p.name || p.protocol} · ${m.name}</option>`);
+        });
+      });
+      sel.innerHTML = opts.join("");
+      sel.onchange = () => {
+        const s2 = AICB.store();
+        if (!sel.value) { s2[keyFor[cap]] = null; }
+        else { const [pid, mid] = sel.value.split("::"); s2[keyFor[cap]] = { providerId: pid, modelId: mid }; }
+        AICB.saveStore(s2);
+      };
+    });
+  }
+
+  function renderAll() { renderProviders(); renderDefaults(); }
+  renderAll();
+
+  // ── Prompt templates ─────────────────────────────────────────────────────────
+  async function saveTemplate(btn, key, slot) {
+    const ta = document.querySelector(`[data-tpl-key="${key}"][data-tpl-slot="${slot}"]`);
+    await AICB.run(btn, async () => {
+      const body = slot ? { mode: "slots", slots: { [slot]: ta.value } } : { mode: "full", content: ta.value };
+      await AICB.api(`/api/prompt-templates/${key}`, { method: "PUT", body });
+      AICB.toast("Template saved");
+    }, "Saving...");
+  }
+  async function deleteTemplate(btn, key) {
+    if (!confirm("Reset this override to the built-in default?")) return;
+    await AICB.run(btn, async () => {
+      await AICB.api(`/api/prompt-templates/${key}`, { method: "DELETE" });
+      window.location.reload();
+    }, "Resetting...");
+  }
+
+  // ── Agents ───────────────────────────────────────────────────────────────────
+  document.getElementById("agent-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    AICB.run(e.submitter, async () => {
+      await AICB.api("/api/agents", { method: "POST", body: {
+        name: f.get("name"), platform: f.get("platform"), category: f.get("category"),
+        appId: f.get("appId"), apiKey: f.get("apiKey"), description: f.get("description") || "",
+      }});
+      window.location.reload();
+    }, "Saving...");
+  });
+  async function deleteAgent(id, name) {
+    if (!confirm(`Delete agent "${name}"?`)) return;
+    try { await AICB.api(`/api/agents/${id}`, { method: "DELETE" }); window.location.reload(); }
+    catch (e) { AICB.toast(e.message, "error"); }
+  }
+</script>
+{% endblock %}

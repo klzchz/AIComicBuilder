@@ -1,40 +1,27 @@
-FROM node:20-alpine AS base
+# AI Comic Builder — Python runtime (FastAPI + SQLite).
+# System ffmpeg is included for the video assembly stage.
+FROM python:3.12-slim
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PORT=3000 \
+    DATABASE_URL=file:/app/data/aicomic.db \
+    UPLOAD_DIR=/app/uploads
 
-# Install ffmpeg with libass for subtitle burn-in, and fonts for CJK subtitles
-RUN apk add --no-cache ffmpeg font-noto-cjk
-
-# --- Dependencies ---
-FROM base AS deps
-RUN apk add --no-cache python3 make g++
-WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
-
-# --- Build ---
-FROM deps AS builder
-COPY . .
-RUN pnpm build
-
-# --- Production ---
-FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy built assets
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/drizzle ./drizzle
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
+
+COPY app ./app
+COPY messages ./messages
+
+RUN mkdir -p /app/data /app/uploads
+VOLUME ["/app/data", "/app/uploads"]
 
 EXPOSE 3000
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-ENV DATABASE_URL="file:/app/data/aicomic.db"
-ENV UPLOAD_DIR="/app/uploads"
-
-CMD ["node", "server.js"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3000"]
