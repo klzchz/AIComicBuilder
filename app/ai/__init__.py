@@ -145,9 +145,26 @@ async def generate_image(
     category: Optional[str] = None,
     project_id: Optional[str] = None,
 ) -> str:
-    """Generate an image and return its "/uploads/..." web path."""
+    """Generate an image and return its "/uploads/..." web path.
+
+    When local GPU generation is enabled (Settings toggle or AICB_IMAGE_PROVIDER=local)
+    and the local SD service is ready, images are generated free on the user's
+    graphics card; otherwise the configured cloud provider is used.
+    """
     initialize_providers()
-    provider = get_ai_provider()
+
+    from app.ai.local_gpu import local_images_enabled
+
+    if local_images_enabled():
+        from app.ai.providers.local_diffusers import LocalDiffusersProvider
+
+        provider = LocalDiffusersProvider(
+            base_url=os.environ.get("AICB_SD_URL"),
+            model=os.environ.get("AICB_SD_MODEL"),
+            upload_dir=settings.UPLOAD_DIR,
+        )
+    else:
+        provider = get_ai_provider()
     fs_path = await provider.generate_image(prompt, options)
     return _to_uploads_url(fs_path)
 

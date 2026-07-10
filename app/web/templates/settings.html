@@ -5,6 +5,60 @@
 <div class="mx-auto max-w-4xl space-y-6">
   <h1 class="text-xl font-semibold text-slate-100">Model Settings</h1>
 
+  <!-- Local GPU generation (free, on the user's graphics card) -->
+  <section class="rounded-2xl border border-line-soft bg-surface-1 p-5" id="localGpuCard">
+    <div class="flex items-center justify-between gap-4">
+      <div>
+        <h2 class="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Local GPU Generation</h2>
+        <p class="mt-1 text-sm text-slate-300">Generate images for free on your own graphics card instead of a paid cloud provider.</p>
+        <p class="mt-2 text-xs" id="localGpuStatus">Checking your hardware…</p>
+      </div>
+      <label class="relative inline-flex cursor-pointer items-center" title="Use your GPU for image generation">
+        <input type="checkbox" id="localGpuToggle" class="peer sr-only" disabled>
+        <div class="h-6 w-11 rounded-full bg-slate-600 peer-checked:bg-emerald-500 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-5"></div>
+      </label>
+    </div>
+    <p class="mt-3 text-[11px] text-slate-500" id="localGpuHint"></p>
+  </section>
+
+  <script>
+    (function () {
+      const statusEl = document.getElementById('localGpuStatus');
+      const toggle = document.getElementById('localGpuToggle');
+      const hint = document.getElementById('localGpuHint');
+      function render(s) {
+        const gpu = s.gpu;
+        if (gpu) {
+          const gb = (gpu.vram_mb / 1024).toFixed(1);
+          statusEl.innerHTML = (s.recommended ? '✅ ' : '⚠️ ') +
+            '<span class="text-slate-200 font-medium">' + gpu.name + '</span> · ' + gb + ' GB VRAM';
+        } else {
+          statusEl.innerHTML = '❌ No NVIDIA GPU detected — cloud providers will be used.';
+        }
+        const ready = s.service && s.service.ready;
+        toggle.checked = !!s.enabled;
+        toggle.disabled = !(s.recommended && ready);
+        if (!gpu || !s.recommended) {
+          hint.textContent = 'A recent NVIDIA GPU with 6 GB+ VRAM is recommended for local generation.';
+        } else if (!ready) {
+          hint.innerHTML = 'GPU ready, but the local SD service is not running. Start it: ' +
+            '<code class="text-slate-300">~/anime-forge/.venv/bin/python ~/anime-forge/sd_service.py</code>';
+        } else {
+          hint.textContent = 'Active model: ' + (s.service.model || 'unknown') + '. Images will render on your GPU at no cost.';
+        }
+      }
+      fetch('/api/local-gpu/status').then(r => r.json()).then(render).catch(() => {
+        statusEl.textContent = 'Could not read GPU status.';
+      });
+      toggle.addEventListener('change', function () {
+        fetch('/api/local-gpu/toggle', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: toggle.checked }),
+        }).then(r => r.json()).then(render);
+      });
+    })();
+  </script>
+
   <!-- Default models (resolved from checked provider models, persisted in localStorage) -->
   <section class="rounded-2xl border border-line-soft bg-surface-1 p-5">
     <h2 class="mb-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Default Models</h2>

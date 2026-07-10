@@ -19,6 +19,7 @@ AI-driven anime/comic generator — a fully automated pipeline from script to an
 - **Video assembly** — concatenate all clips into a full animation with burned-in subtitles and BGM.
 - **Storyboard workflow** — list view and kanban view (auto-columned by generation progress), per-shot editing, version control.
 - **Multi-model** — OpenAI, Gemini, Kling, Seedance, Veo, Wan, DashScope, UCloud Seedance — configurable per project.
+- **Local GPU generation (free)** — if you have a capable NVIDIA GPU, generate images for free on your own graphics card instead of a cloud provider. Auto-detected in Settings. See [`local_sd/`](./local_sd).
 
 ## Tech stack
 

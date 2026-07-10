@@ -112,6 +112,14 @@ def create_ai_provider(config: ProviderConfig, upload_dir: Optional[str] = None)
             model=config.model_id,
             upload_dir=upload_dir,
         )
+    if protocol == "local":
+        from app.ai.providers.local_diffusers import LocalDiffusersProvider
+
+        return LocalDiffusersProvider(
+            base_url=config.base_url,
+            model=config.model_id,
+            upload_dir=upload_dir,
+        )
     raise ValueError(f"Unsupported AI protocol: {protocol}")
 
 

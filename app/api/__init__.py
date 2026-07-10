@@ -17,6 +17,7 @@ from app.api import (
     episodes,
     generate,
     imports,
+    local_gpu,
     models,
     mood_board,
     projects,
@@ -54,6 +55,7 @@ for _module in (
     agents,
     models,
     tasks,
+    local_gpu,
 ):
     api_router.include_router(_module.router)
 
