@@ -45,9 +45,13 @@ def get_user_id(request: Request) -> str:
 
 
 def resolve_project(db: Session, project_id: str, user_id: str) -> Project | None:
-    """Return the project row if owned by user_id, else None."""
-    if not user_id:
-        return None
+    """Return the project row if owned by user_id, else None.
+
+    The web UI is single-tenant (no auth/fingerprint), so requests carry an
+    empty user id and projects are created with user_id="". An empty id is a
+    valid owner key here and matches the empty-owner rows; it is NOT treated as
+    "deny all" (which would 404 every mutation the browser makes).
+    """
     return db.execute(
         select(Project).where(Project.id == project_id, Project.user_id == user_id)
     ).scalar_one_or_none()
